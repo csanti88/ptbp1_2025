@@ -1,0 +1,31 @@
+library(Seurat)
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+
+#Load and Create Seurat object
+Ptbp1_data <- Read10X(data.dir = "C:/Users/haley/OneDrive/Documents/Blackshaw Lab/Ptbp1/Ptbp1_Chx10_Aggre122222/outs/count/filtered_feature_bc_matrix")
+Ptbp1 <- CreateSeuratObject(counts =Ptbp1_data, min.cells = 3, min.features = 200)
+
+#Quality control
+Ptbp1[["percent.mt"]] <- PercentageFeatureSet(Ptbp1, pattern = "^mt-")
+
+VlnPlot(Ptbp1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+FeatureScatter(Ptbp1, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(Ptbp1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+#Subset data to remove poor quality cells
+Ptbp1 <- subset(Ptbp1, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20)
+
+#Run default Seurat pipeline
+Ptbp1 <- NormalizeData(Ptbp1) %>% 
+        FindVariableFeatures(nfeatures = 4000) %>% 
+        ScaleData(vars.to.regress = "percent.mt") %>%
+        RunPCA(features = VariableFeatures(Ptbp1)) %>%
+        FindNeighbors(dims= 1:12) %>%
+        FindClusters(resolution = 0.5) %>%
+        RunUMAP(dims = 1:12)
+
+#Add sample information in metadata
+Ptbp1@meta.data[,'Sample']<-apply(as.matrix(rownames(Ptbp1@meta.data)), 1, function(X1){X2<-strsplit(X1,'-')[[1]][2];})
+Ptbp1@meta.data[,'Sample'] <- recode(Ptbp1@meta.data[,'Sample'], "1" = "Ptbp1_Ctrl", "2" = "Ptbp1_KO")

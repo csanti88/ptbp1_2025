@@ -2,7 +2,6 @@ library(Seurat)
 library(dplyr)
 library(patchwork)
 library(ggplot2)
-library(harmony)
 library(data.table)
 library(magrittr)
 set.seed(16)
@@ -72,6 +71,7 @@ VlnPlot(Ptbp1, split.by = 'Sample', features = mg)
 new.cluster.ids <- c("Rods", "Rods", "Rods", "Rods", "Müller glia", "Rod BC", "Cones", "Gabaergic AC", "BC", "Müller glia_lowq", "BC", "BC", "Rod BC", "BC", "AC", "AC", "Müller glia", "BC", "vascular cells", "BC", "BC", "Müller glia")
 names(new.cluster.ids) <- levels(Ptbp1)
 Ptbp1 <- RenameIdents(Ptbp1, new.cluster.ids)
+Ptbp1[["Celltype']] <- Idents(Ptbp1)
 
 DimPlot(Ptbp1, split.by = 'Sample', label = TRUE, pt.size = 0.5)
 
@@ -97,7 +97,26 @@ bar1 <- ggplot(counts, aes(x = Var2, y = Freq, fill = Var1)) +
   theme(legend.title = element_blank())
 bar1
 
+#Differential gene expression between clusters
+deg_MG <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_Ctrl", ident.2 = "Ptbp1_KO", group.by = "Sample", subset.idents = "Müller glia", logfc.threshold = 0.25, min.pct = 0.1)
+deg_sig_MG <- subset(deg_MG, p_val_adj < 0.05)
+deg_BC <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_Ctrl", ident.2 = "Ptbp1_KO", group.by = "Sample", subset.idents = "BC", logfc.threshold = 0.25, min.pct = 0.1)
+deg_sig_BC <- subset(deg_BC, p_val_adj < 0.05)
+deg_Cone <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_Ctrl", ident.2 = "Ptbp1_KO", group.by = "Sample", subset.idents = "Cone", logfc.threshold = 0.25, min.pct = 0.1)
+deg_sig_Cone <- subset(deg_Cone, p_val_adj < 0.05)
+deg_Rod <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_Ctrl", ident.2 = "Ptbp1_KO", group.by = "Sample", subset.idents = "Rod", logfc.threshold = 0.25, min.pct = 0.1)
+deg_sig_Rod <- subset(deg_Rod, p_val_adj < 0.05)
 
+#DotPlot
+deg_sig_MG_sorted <- deg_sig_MG[order(deg_sig_MG$p_val_adj), ]
+top20_genes <- rownames(deg_sig_MG_sorted)[1:20]
+DotPlot(Ptbp1_subset, idents = "Müller glia", features = top20_genes, group.by = "Sample") +
+  scale_color_gradientn(colors = c("navy", "white", "firebrick3")) +
+  labs(title = "Top 20 DEGs in Muller glia") +
+  coord_flip()
+
+#Violin plots for MG genes
+VlnPlot(Ptbp1_subset, split.by = 'Sample', idents = "Müller glia", features = c("Sox9", "Apoe", "Kcnj10","Rlbp1", "Glul", "Tcf7l2"), pt.size = 0)
 
 
 

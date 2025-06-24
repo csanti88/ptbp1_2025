@@ -2,20 +2,25 @@ library(Seurat)
 library(dplyr)
 library(patchwork)
 library(ggplot2)
+library(harmony)
+library(data.table)
+library(magrittr)
+set.seed(16)
 
 #Load and Create Seurat object
-Ptbp1_data <- Read10X(data.dir = "C:/Users/haley/OneDrive/Documents/Blackshaw Lab/Ptbp1/Ptbp1_Chx10_Aggre122222/outs/count/filtered_feature_bc_matrix")
+Ptbp1_data <- Read10X(data.dir = "./Ptbp1/Ptbp1_Chx10_Aggre122222/outs/count/filtered_feature_bc_matrix"")
 Ptbp1 <- CreateSeuratObject(counts =Ptbp1_data, min.cells = 3, min.features = 200)
 
 #Quality control
 Ptbp1[["percent.mt"]] <- PercentageFeatureSet(Ptbp1, pattern = "^mt-")
 
+#QC plots
 VlnPlot(Ptbp1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
 FeatureScatter(Ptbp1, feature1 = "nCount_RNA", feature2 = "percent.mt")
 FeatureScatter(Ptbp1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
 
 #Subset data to remove poor quality cells
-Ptbp1 <- subset(Ptbp1, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20)
+Ptbp1 <- subset(Ptbp1, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20 & nCount_RNA > 700 & nCount_RNA < 10000)
 
 #Run default Seurat pipeline
 Ptbp1 <- NormalizeData(Ptbp1) %>% 
@@ -29,3 +34,97 @@ Ptbp1 <- NormalizeData(Ptbp1) %>%
 #Add sample information in metadata
 Ptbp1@meta.data[,'Sample']<-apply(as.matrix(rownames(Ptbp1@meta.data)), 1, function(X1){X2<-strsplit(X1,'-')[[1]][2];})
 Ptbp1@meta.data[,'Sample'] <- recode(Ptbp1@meta.data[,'Sample'], "1" = "Ptbp1_Ctrl", "2" = "Ptbp1_KO")
+
+#UMAP plots
+DimPlot(Ptbp1, split.by = 'Sample', label = T)
+
+#Find Differential genes for each cluster
+for (i in 0:22) {
+  markers <- FindMarkers(Ptbp1, ident.1 = i, min.pct = 0.25)
+  filename <- paste0("./Ptbp1/deg/cluster", i, ".markers.csv")
+  write.csv(markers, file = filename)
+}
+
+#Number of cells in each cluster
+cellnumbr <- Ptbp1@meta.data %>% as.data.table
+cellnumbr[, .N, by = c("Sample", "seurat_clusters")]
+cellnumbr[, .N, by = c("Sample", "seurat_clusters")] %>% dcast(., Sample ~ seurat_clusters, value.var = "N")
+
+#Plot marker genes for each cell type
+rpc <- c("Ccnd2", "Fgf15", "Vsx2", "Hopx", Car2", "Lhx2", "Rlbp1")
+nrpc <- c("Atoh7", "Btg2", "Foxn4", "Gadd45a","Gadd45g", "Neurog2", "Neurod1", "Neurod2","Neurod4","Ascl1")
+mg <- c("Car2", "Lhx2", "Rlbp1", "Kcnj10", "Glul", "Sox9") 
+offconebc <- c("Grik1", "Klhdc8a")
+onconbc <- c("Grm6", "Scgn", "Otx2")
+rodbc <- c("Prkca", "Sebox")
+cone <- c("Arr3", "Thrb", "Rxrg", "Opn1sw")
+rod <- c("Nrl", "Rom1", "Nr2e3")
+rgc <- c("Isl2", "Pou4f1", "Pou4f3", "Rbpms")
+hc <- c("Lhx1", "Onecut2")
+ac <- c("Tfap2a", "Tfap2b", "Pax6")
+vascular <- c("Pecam1", "Acta2")
+
+FeaturePlot(Ptbp1, split.by = 'Sample', features = mg, label = TRUE) #Change feature list as needed
+DotPlot(Ptbp1, split.by = 'Sample', features = mg)
+VlnPlot(Ptbp1, split.by = 'Sample', features = mg)
+
+#Name cell clusters
+new.cluster.ids <- c("Rods", "Rods", "Rods", "Rods", "Müller glia", "Rod BC", "Cones", "Gabaergic AC", "BC", "Müller glia_lowq", "BC", "BC", "Rod BC", "BC", "AC", "AC", "Müller glia", "BC", "vascular cells", "BC", "BC", "Müller glia")
+names(new.cluster.ids) <- levels(Ptbp1)
+Ptbp1 <- RenameIdents(Ptbp1, new.cluster.ids)
+
+DimPlot(Ptbp1, split.by = 'Sample', label = TRUE, pt.size = 0.5)
+
+#Remove vascular cells and rod contaminated Muller glia
+Ptbp1_subset <- subset(Ptbp1, idents = c("vascular cells", "Müller glia_lowq"), invert = TRUE)
+
+DimPlot(Ptbp1_subset, split.by = 'Sample', label = TRUE, pt.size = 0.5)
+
+#Proportion of cells are in each cluster
+counts <- prop.table(table(Idents(Ptbp1_subset), Ptbp1_subset@meta.data[,'Sample']))
+counts <- round(counts,4)
+counts <- as.data.frame(counts)
+counts$Var1 <- as.character(counts$Var1)
+counts$Var1 <- factor(counts$Var1, levels = order1)
+head(counts)
+order1 <- c("Rods", "Müller glia", "Rod BC", "Cones", "Gabaergic AC", "BC", "AC")
+bar1 <- ggplot(counts, aes(x = Var2, y = Freq, fill = Var1)) +
+  theme_bw(base_size = 15) +
+  geom_text(aes(label = Freq), position = "stack") +
+  geom_col(position = "fill", width = 0.5) +
+  xlab("Sample") +
+  ylab("Proportion") +
+  theme(legend.title = element_blank())
+bar1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

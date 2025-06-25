@@ -169,7 +169,7 @@ for (celltype in names(deg_list)) {
       plot.title = element_text(size = 12, hjust = 0.5)
     )
   print(p)
-  ggsave(paste0("./Ptbp1/deg_volcanoplot_", celltype, ".png"), plot = p, width = 6, height = 4)
+  ggsave(paste0("./Ptbp1/deg_volcanoplot_", celltype, ".pdf"), plot = p, width = 6, height = 4)
 }
 
 #GSEA and plotting for DEGs
@@ -193,7 +193,7 @@ for (celltype in names(deg_list)) {
     facet_grid(. ~ .sign) +
     ggtitle(paste0("GSEA GO: ", celltype))
   print(p)
-  ggsave(paste0("./Ptbp1/gsea_dotplot_", celltype, ".png"), plot = p, width = 6, height = 10)
+  ggsave(paste0("./Ptbp1/gsea_dotplot_", celltype, ".pdf"), plot = p, width = 6, height = 10)
 }
 
 #Violin plots for MG genes

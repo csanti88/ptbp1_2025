@@ -4,11 +4,16 @@ library(patchwork)
 library(ggplot2)
 library(data.table)
 library(magrittr)
+library(viridis)
+library(clusterProfiler)
+library (DOSE)
+library(org.Mm.eg.db)
+library(enrichplot)
 set.seed(16)
 
 #Load and Create Seurat object
-Ptbp1_data <- Read10X(data.dir = "./Ptbp1/Ptbp1_Chx10_Aggre122222/outs/count/filtered_feature_bc_matrix"")
-Ptbp1 <- CreateSeuratObject(counts =Ptbp1_data, min.cells = 3, min.features = 200)
+Ptbp1_data <- Read10X(data.dir = "./Ptbp1/outs/count/filtered_feature_bc_matrix")
+Ptbp1 <- CreateSeuratObject(counts = Ptbp1_data, min.cells = 3, min.features = 200)
 
 #Quality control
 Ptbp1[["percent.mt"]] <- PercentageFeatureSet(Ptbp1, pattern = "^mt-")
@@ -63,49 +68,134 @@ hc <- c("Lhx1", "Onecut2")
 ac <- c("Tfap2a", "Tfap2b", "Pax6")
 vascular <- c("Pecam1", "Acta2")
 
-FeaturePlot(Ptbp1, split.by = 'Sample', features = mg, label = TRUE) #Change feature list as needed
+FeaturePlot(Ptbp1, features = mg, order = TRUE) #Change feature list as needed
 DotPlot(Ptbp1, split.by = 'Sample', features = mg)
 VlnPlot(Ptbp1, split.by = 'Sample', features = mg)
 
 #Name cell clusters
-new.cluster.ids <- c("Rods", "Rods", "Rods", "Rods", "Müller glia", "Rod BC", "Cones", "Gabaergic AC", "BC", "Müller glia_lowq", "BC", "BC", "Rod BC", "BC", "AC", "AC", "Müller glia", "BC", "vascular cells", "BC", "BC", "Müller glia")
-names(new.cluster.ids) <- levels(Ptbp1)
-Ptbp1 <- RenameIdents(Ptbp1, new.cluster.ids)
-Ptbp1[["Celltype']] <- Idents(Ptbp1)
+clus<-c("0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22")
+new.cluster.ids <- c("Rod","Rod","Rod","Rod","MG","BC","AC","Cone","MG_lowqc","BC","BC","BC","BC","BC","AC","AC","MG","Vascular","BC","BC","BC","BC","MG")
+Ptbp1@meta.data$Celltype <- plyr::mapvalues(x = Ptbp1@meta.data$seurat_clusters, from = clus, to = new.cluster.ids)
+Idents(Ptbp1) <- "Celltype
+
+hc_cells <- CellSelector (FeaturePlot(Ptbp1, features = "Lhx1", order = T))
+Idents (Ptbp1, cells = hc_cells) <- "HC"
+rgc_cells <- CellSelector (FeaturePlot(Ptbp1, features = "Thy1", order = T))
+Idents (Ptbp1, cells = rgc_cells) <- "RGC"
+rpe_cells <- CellSelector (FeaturePlot(Ptbp1, features = "Rpe65", order = T))
+Idents (Ptbp1, cells = rpe_cells) <- "RPE"
+astro_cells <- CellSelector (FeaturePlot(Ptbp1, features = "Pax2", order = T))
+Idents (Ptbp1, cells = astro_cells) <- "Astrocyte"
+micro_cells <- CellSelector (FeaturePlot(Ptbp1, features = "Aif1", order = T))
+Idents (Ptbp1, cells = micro_cells) <- "Microglia"
+
+Ptbp1[["Celltype"]] <- Idents(Ptbp1)
+
+#Order cell types
+order<-c("Rod","MG","BC","Cone","AC","RGC","HC","RPE","Astrocyte","Microglia","MG_lowqc","Vascular")
+Ptbp1@meta.data$Celltype <- factor(Ptbp1@meta.data$Celltype, levels = order)
+Idents(Ptbp1) <- "Celltype"
 
 DimPlot(Ptbp1, split.by = 'Sample', label = TRUE, pt.size = 0.5)
 
-#Remove vascular cells and rod contaminated Muller glia
-Ptbp1_subset <- subset(Ptbp1, idents = c("vascular cells", "Müller glia_lowq"), invert = TRUE)
+#Remove non-major cells and rod contaminated Muller glia
+Ptbp1_subset <- subset(Ptbp1, idents = c("Vascular", "Astrocyte", "RPE", "Microglia", "MG_lowqc"), invert = TRUE)
+Ptbp1_subset <- Ptbp1_subset %>% 
+                ScaleData(vars.to.regress = "percent.mt") %>%
+                RunPCA(features = VariableFeatures(Ptbp1_subset)) %>% 
+                RunUMAP(dims = 1:12)
 
-DimPlot(Ptbp1_subset, split.by = 'Sample', label = TRUE, pt.size = 0.5)
+#UMAP plot showing cell types
+DimPlot(Ptbp1_subset, label = TRUE, pt.size = 0.5) + NoLegend() + NoAxes()
+DimPlot(Ptbp1_subset, split.by = 'Sample', label = TRUE, pt.size = 0.5) + NoLegend() + NoAxes()
+
+#Dotplot of marker genes
+genes <- c("Lhx1", "Onecut2", "Thy1", "Rbpms", "Tfap2a", "Gad1","Arr3", "Opn1sw", "Vsx2", "Prkca", "Glul", "Lhx2", "Nrl", "Nr2e3")
+DotPlot(Ptbp1_subset, features= rev(genes), scale.by= "size", scale.max=80) + scale_colour_viridis(end = 0.87, option="H") + scale_y_discrete(limits=rev) + RotatedAxis() + labs(x= "Marker Genes", y= "Cell Type")
 
 #Proportion of cells are in each cluster
-counts <- prop.table(table(Idents(Ptbp1_subset), Ptbp1_subset@meta.data[,'Sample']))
-counts <- round(counts,4)
-counts <- as.data.frame(counts)
-counts$Var1 <- as.character(counts$Var1)
-counts$Var1 <- factor(counts$Var1, levels = order1)
-head(counts)
-order1 <- c("Rods", "Müller glia", "Rod BC", "Cones", "Gabaergic AC", "BC", "AC")
-bar1 <- ggplot(counts, aes(x = Var2, y = Freq, fill = Var1)) +
+meta.data <- Ptbp1_subset@meta.data
+counts <- group_by(meta.data, Sample, Celltype)	%>% dplyr::summarise(count = n()) %>%
+    group_by(Sample) %>% dplyr::mutate(clust_total = sum(count)) %>% dplyr::mutate(clust_prop = count / clust_total * 100)
+
+ggplot(counts, aes(x = Sample, y = clust_prop, fill = Celltype)) +
   theme_bw(base_size = 15) +
-  geom_text(aes(label = Freq), position = "stack") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   geom_col(position = "fill", width = 0.5) +
   xlab("Sample") +
   ylab("Proportion") +
   theme(legend.title = element_blank())
-bar1
 
 #Differential gene expression between clusters
-deg_MG <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_Ctrl", ident.2 = "Ptbp1_KO", group.by = "Sample", subset.idents = "Müller glia", logfc.threshold = 0.25, min.pct = 0.1)
-deg_sig_MG <- subset(deg_MG, p_val_adj < 0.05)
-deg_BC <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_Ctrl", ident.2 = "Ptbp1_KO", group.by = "Sample", subset.idents = "BC", logfc.threshold = 0.25, min.pct = 0.1)
-deg_sig_BC <- subset(deg_BC, p_val_adj < 0.05)
-deg_Cone <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_Ctrl", ident.2 = "Ptbp1_KO", group.by = "Sample", subset.idents = "Cone", logfc.threshold = 0.25, min.pct = 0.1)
-deg_sig_Cone <- subset(deg_Cone, p_val_adj < 0.05)
-deg_Rod <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_Ctrl", ident.2 = "Ptbp1_KO", group.by = "Sample", subset.idents = "Rod", logfc.threshold = 0.25, min.pct = 0.1)
-deg_sig_Rod <- subset(deg_Rod, p_val_adj < 0.05)
+celltypes <- c("Rod", "MG", "BC", "Cone", "AC")
+for (i in celltypes) {
+    deg <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_Ctrl", ident.2 = "Ptbp1_KO", group.by = "Sample", subset.ident = i, logfc.threshold = 0.25, min.pct = 0.1)
+    deg_sig <- subset(deg, p_val_adj < 0.05)
+    outfile <- paste0("./Ptbp1/deg/deg_", i, "_adjpval005.csv")
+    write.csv(deg_sig, file = outfile)
+}
+
+Rod_sig <- read.csv(file = "/Ptbp1/deg/deg_Rod_adjpval005.csv", row.names = 1)
+MG_sig <- read.csv(file = "/Ptbp1/deg/deg_MG_adjpval005.csv", row.names = 1)
+BC_sig <- read.csv(file = "/Ptbp1/deg/deg_BC_adjpval005.csv", row.names = 1)
+Cone_sig <- read.csv(file = "/Ptbp1/deg/deg_Cone_adjpval005.csv", row.names = 1)
+AC_sig <- read.csv(file = "/Ptbp1/deg/deg_AC_adjpval005.csv", row.names = 1)
+
+#Volcano plots for DEGs
+deg_list <- list(Rod = Rod_sig, MG = MG_sig, BC = BC_sig, Cone = Cone_sig, AC = AC_sig)
+
+colors2 <- c("Ptbp1_Ctrl" = "#F8766D", "Ptbp1_KO" = "#00BFC4")
+for (celltype in names(deg_list)) {
+  deg_data <- deg_list[[celltype]]
+  deg_data$Enriched <- "Ptbp1_Ctrl"
+  deg_data$Enriched[deg_data$avg_log2FC > 0.2] <- "Ptbp1_KO"
+  deg_counts <- table(deg_data$Enriched)
+  legend_labels <- c(
+    paste0("Ptbp1_Ctrl (", deg_counts["Ptbp1_Ctrl"], " DEGs)"),
+    paste0("Ptbp1_KO (", deg_counts["Ptbp1_KO"], " DEGs)")
+  )
+  names(legend_labels) <- c("Ptbp1_Ctrl", "Ptbp1_KO")
+  p <- ggplot(deg_data, aes(x = avg_log2FC, y = -log10(p_val_adj), color = Enriched)) +
+    geom_point(size = 0.7) +
+    theme_classic() +
+    scale_color_manual(values = colors2, limits = c("Ptbp1_Ctrl", "Ptbp1_KO"), labels = legend_labels) +
+    xlab("log2(Fold Change)") +
+    ylab("-log10(p-value)") +
+    ggtitle(paste0("Differential Expression: ", celltype)) +
+    xlim(-6, 6) +
+    theme(
+      legend.title = element_text(size = 10),
+      legend.text = element_text(size = 10),
+      plot.title = element_text(size = 12, hjust = 0.5)
+    )
+  print(p)
+}
+
+#GSEA and plotting for DEGs
+for (celltype in names(deg_list)) {
+  genelist <- deg_list[[celltype]]$avg_log2FC
+  names(genelist) <- rownames(deg_list[[celltype]])
+  genelist <- sort(genelist, decreasing = TRUE)
+  gse <- gseGO(
+    geneList = genelist,
+    ont = "ALL",
+    keyType = "SYMBOL",
+    nPerm = 10000,
+    minGSSize = 3,
+    maxGSSize = 800,
+    pvalueCutoff = 0.05,
+    pAdjustMethod = "none",
+    verbose = TRUE,
+    OrgDb = org.Mm.eg.db
+  )
+  p <- dotplot(gse, showCategory = 10, split = ".sign") + 
+    facet_grid(. ~ .sign) +
+    ggtitle(paste0("GSEA GO: ", celltype))
+  print(p)
+}
+
+#Violin plots for MG genes
+VlnPlot(Ptbp1_subset, split.by = 'Sample', idents = "Müller glia", features = c("Sox9", "Apoe", "Kcnj10","Rlbp1", "Glul", "Tcf7l2"), pt.size = 0)
 
 #DotPlot
 deg_sig_MG_sorted <- deg_sig_MG[order(deg_sig_MG$p_val_adj), ]
@@ -114,36 +204,4 @@ DotPlot(Ptbp1_subset, idents = "Müller glia", features = top20_genes, group.by 
   scale_color_gradientn(colors = c("navy", "white", "firebrick3")) +
   labs(title = "Top 20 DEGs in Muller glia") +
   coord_flip()
-
-#Violin plots for MG genes
-VlnPlot(Ptbp1_subset, split.by = 'Sample', idents = "Müller glia", features = c("Sox9", "Apoe", "Kcnj10","Rlbp1", "Glul", "Tcf7l2"), pt.size = 0)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

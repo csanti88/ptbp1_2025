@@ -129,17 +129,17 @@ ggplot(counts, aes(x = Sample, y = clust_prop, fill = Celltype)) +
 #Differential gene expression between clusters
 celltypes <- c("Rod", "MG", "BC", "Cone", "AC")
 for (i in celltypes) {
-    deg <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_Ctrl", ident.2 = "Ptbp1_KO", group.by = "Sample", subset.ident = i, logfc.threshold = 0.25, min.pct = 0.1)
+    deg <- FindMarkers(Ptbp1_subset, ident.1 = "Ptbp1_KO", ident.2 = "Ptbp1_Ctrl", group.by = "Sample", subset.ident = i, logfc.threshold = 0.25, min.pct = 0.1)
     deg_sig <- subset(deg, p_val_adj < 0.05)
     outfile <- paste0("./Ptbp1/deg/deg_", i, "_adjpval005.csv")
     write.csv(deg_sig, file = outfile)
 }
 
-Rod_sig <- read.csv(file = "/Ptbp1/deg/deg_Rod_adjpval005.csv", row.names = 1)
-MG_sig <- read.csv(file = "/Ptbp1/deg/deg_MG_adjpval005.csv", row.names = 1)
-BC_sig <- read.csv(file = "/Ptbp1/deg/deg_BC_adjpval005.csv", row.names = 1)
-Cone_sig <- read.csv(file = "/Ptbp1/deg/deg_Cone_adjpval005.csv", row.names = 1)
-AC_sig <- read.csv(file = "/Ptbp1/deg/deg_AC_adjpval005.csv", row.names = 1)
+Rod_sig <- read.csv(file = "./Ptbp1/deg/deg_Rod_adjpval005.csv", row.names = 1)
+MG_sig <- read.csv(file = "./Ptbp1/deg/deg_MG_adjpval005.csv", row.names = 1)
+BC_sig <- read.csv(file = "./Ptbp1/deg/deg_BC_adjpval005.csv", row.names = 1)
+Cone_sig <- read.csv(file = "./Ptbp1/deg/deg_Cone_adjpval005.csv", row.names = 1)
+AC_sig <- read.csv(file = "./Ptbp1/deg/deg_AC_adjpval005.csv", row.names = 1)
 
 #Volcano plots for DEGs
 deg_list <- list(Rod = Rod_sig, MG = MG_sig, BC = BC_sig, Cone = Cone_sig, AC = AC_sig)
@@ -169,6 +169,7 @@ for (celltype in names(deg_list)) {
       plot.title = element_text(size = 12, hjust = 0.5)
     )
   print(p)
+  ggsave(paste0("./Ptbp1/deg_volcanoplot_", celltype, ".png"), plot = p, width = 6, height = 4)
 }
 
 #GSEA and plotting for DEGs
@@ -192,6 +193,7 @@ for (celltype in names(deg_list)) {
     facet_grid(. ~ .sign) +
     ggtitle(paste0("GSEA GO: ", celltype))
   print(p)
+  ggsave(paste0("./Ptbp1/gsea_dotplot_", celltype, ".png"), plot = p, width = 6, height = 10)
 }
 
 #Violin plots for MG genes
